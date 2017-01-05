@@ -178,7 +178,7 @@ class Lib:
                     episode_url=a.get('href'),
                     cover=img.get('src'),
                     has_sub=sub is not None,
-                    release='??',
+                    release=None,
                 )
                 result.append(episode)
         return result

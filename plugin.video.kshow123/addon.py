@@ -68,31 +68,46 @@ def build_url(query):
     return base_url + '?' + urllib.urlencode(query)
 
 def kodi_menu():
-    li = xbmcgui.ListItem('Latest', iconImage='DefaultVideo.png')
+    li = xbmcgui.ListItem('Latest')
+    li.setArt({
+        'icon': 'DefaultRecentlyAddedEpisodes.png',
+    })
     xbmcplugin.addDirectoryItem(handle=addon_handle,
                                 url=build_url({ 'category': 'latest' }),
                                 listitem=li,
                                 isFolder=True)
 
-    li = xbmcgui.ListItem('Popular', iconImage='DefaultVideo.png')
+    li = xbmcgui.ListItem('Popular')
+    li.setArt({
+        'icon': 'DefaultTVShows.png',
+    })
     xbmcplugin.addDirectoryItem(handle=addon_handle,
                                 url=build_url({ 'category': 'popular' }),
                                 listitem=li,
                                 isFolder=True)
 
-    li = xbmcgui.ListItem('Top Rated', iconImage='DefaultVideo.png')
+    li = xbmcgui.ListItem('Top Rated')
+    li.setArt({
+        'icon': 'DefaultMusicTop100.png',
+    })
     xbmcplugin.addDirectoryItem(handle=addon_handle,
                                 url=build_url({ 'category': 'rated' }),
                                 listitem=li,
                                 isFolder=True)
 
-    li = xbmcgui.ListItem('All shows', iconImage='DefaultVideo.png')
+    li = xbmcgui.ListItem('All shows')
+    li.setArt({
+        'icon': 'DefaultVideoPlaylists.png',
+    })
     xbmcplugin.addDirectoryItem(handle=addon_handle,
                                 url=build_url({ 'category': 'all' }),
                                 listitem=li,
                                 isFolder=True)
 
-    li = xbmcgui.ListItem('Search', iconImage='DefaultVideo.png')
+    li = xbmcgui.ListItem('Search')
+    li.setArt({
+        'icon': 'DefaultFolder.png',
+    })
     xbmcplugin.addDirectoryItem(handle=addon_handle,
                                 url=build_url({ 'category': 'search' }),
                                 listitem=li,
@@ -101,10 +116,8 @@ def kodi_menu():
 def kodi_list_x_shows(page, episode_list, category):
     for episode in episode_list:
         url = build_url({ 'category': 'episode', 'episode': serialize(episode) })
-        icon = 'DefaultVideo.png'
-        if episode.cover is not None:
-            icon = episode.cover
-        li = xbmcgui.ListItem(episode.show_name + ' - ' + episode.episode_name, iconImage=icon)
+        li = xbmcgui.ListItem(get_episode_name(episode))
+        li.setArt(get_episode_cover(episode))
         xbmcplugin.addDirectoryItem(handle=addon_handle,
                                     url=url,
                                     listitem=li,
@@ -121,7 +134,11 @@ def kodi_list_all_shows():
     show_list = kshow.get_shows()
     for show in show_list:
         url = build_url({ 'category': 'episodes', 'show': serialize(show) })
-        li = xbmcgui.ListItem(show.show_name, iconImage='DefaultVideo.png')
+        li = xbmcgui.ListItem(show.show_name)
+        li.setArt({
+            'icon': 'DefaultFolder.png',
+            'fanart': '../backgrounds/tv.jpg',
+        })
         xbmcplugin.addDirectoryItem(handle=addon_handle,
                                     url=url,
                                     listitem=li,
@@ -131,19 +148,8 @@ def kodi_list_episodes(show):
     episode_list = kshow.get_episodes(show)
     for episode in episode_list:
         url = build_url({ 'category': 'episode', 'episode': serialize(episode) })
-        cover = 'DefaultVideo.png'
-        if episode.cover is not None:
-            cover = episode.cover
-        name = episode.episode_name
-        if episode.episode_number is not None:
-            name = 'Episode ' + str(episode.episode_number)
-        suffix = ''
-        if episode.has_sub:
-            suffix = ' (SUB)'
-        if episode.release is not None:
-            suffix += ' - ' + episode.release
-        li = xbmcgui.ListItem(name + suffix,
-                              iconImage=cover)
+        li = xbmcgui.ListItem(get_episode_name(episode), iconImage=cover)
+        li.setArt(get_episode_cover(episode))
         xbmcplugin.addDirectoryItem(handle=addon_handle,
                                     url=url,
                                     listitem=li,
@@ -153,10 +159,9 @@ def kodi_list_servers(episode):
     server_list = kshow.get_episode(episode)
     for server in server_list:
         url = build_url({ 'category': 'file', 'server': serialize(server) })
-        icon = 'DefaultVideo.png'
-        if episode.cover is not None:
-            icon = episode.cover
-        li = xbmcgui.ListItem(server.server_name + ' (' + server.video_name + ') - ' + server.show_name + ' - ' + server.episode_name, iconImage=icon)
+        name = get_episode_name(episode)
+        li = xbmcgui.ListItem(server.server_name + ' (' + server.video_name + ') - ' + name)
+        li.setArt(get_episode_cover(episode))
         xbmcplugin.addDirectoryItem(handle=addon_handle,
                                     url=url,
                                     listitem=li,
@@ -166,13 +171,41 @@ def kodi_list_videos(server):
     video_list = kshow.get_video(server)
     for video in video_list:
         url = video.file_url
-        li = xbmcgui.ListItem(video.episode_name + ' (' + video.label + ')' + ' - ' + video.kind + ', ' + video.type,
-                              iconImage=video.cover,
-        )
+        name = get_video_name(video)
+        li = xbmcgui.ListItem(name)
+        li.setInfo('video', { 'title': name })
+        li.setArt({
+            'icon': video.cover,
+            'fanart': video.cover,
+        })
         xbmcplugin.addDirectoryItem(handle=addon_handle, 
                                     url=url, 
                                     listitem=li)
 
+def get_episode_name(episode):
+    name = episode.show_name + ' - ' + episode.episode_name
+    suffix = ''
+    if episode.has_sub:
+        suffix = ' (SUB)'
+    if episode.release is not None:
+        suffix += ' - ' + episode.release
+    return name + suffix
+
+def get_episode_cover(episode):
+    cover = {
+        'icon': 'DefaultFolder.png',
+        'fanart': 'fanart.jpg',
+    }
+    if episode.cover is not None:
+        cover = {
+            'icon': episode.cover,
+            'fanart': episode.cover,
+        }
+
+    return cover
+
+def get_video_name(video):
+    return video.episode_name + ' (' + video.label + ')' + ' - ' + video.kind + ', ' + video.type
 
 def GUIEditExportName(name=''):
     exit = True
@@ -200,7 +233,6 @@ xbmcplugin.setContent(addon_handle, 'movies')
 args = urlparse.parse_qs(sys.argv[2][1:])
 
 arg_category = args.get('category', [''])[0]
-logger.log('Listing category: ' + str(arg_category))
 
 # menu category
 if arg_category == 'popular':
@@ -208,17 +240,17 @@ if arg_category == 'popular':
     arg_page_int = int(arg_page)
     episode_list = kshow.get_popular_shows(arg_page_int)
     kodi_list_x_shows(arg_page_int, episode_list, arg_category)
-if arg_category == 'latest':
+elif arg_category == 'latest':
     arg_page = args.get('page', ['1'])[0]
     arg_page_int = int(arg_page)
     episode_list = kshow.get_latest_shows(arg_page_int)
     kodi_list_x_shows(arg_page_int, episode_list, arg_category)
-if arg_category == 'rated':
+elif arg_category == 'rated':
     arg_page = args.get('page', ['1'])[0]
     arg_page_int = int(arg_page)
     episode_list = kshow.get_rated_shows(arg_page_int)
     kodi_list_x_shows(arg_page_int, episode_list, arg_category)
-if arg_category == 'search':
+elif arg_category == 'search':
     arg_query = GUIEditExportName()
     arg_page = args.get('page', ['1'])[0]
     arg_page_int = int(arg_page)

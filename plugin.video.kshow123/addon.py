@@ -1,8 +1,3 @@
-#Show = namedtuple('Show', 'show_name episodes_url has_sub cover')
-#Episode = namedtuple('Episode', 'show_name episode_name episode_number episode_url has_sub cover release')
-#Server = namedtuple('Server', 'show_name episode_name episode_number server_name video_id video_name file_url sub_url cover')
-#File = namedtuple('File', 'show_name episode_name episode_number server_name video_id video_name file_url label type default kind cover')
-
 #!/usr/bin/python
 
 from collections import namedtuple

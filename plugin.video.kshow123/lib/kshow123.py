@@ -1,7 +1,7 @@
 from collections import namedtuple
 import re
 import string
-from time import gmtime, strftime
+import time
 import urllib
 import urllib2
 import zlib
@@ -17,6 +17,10 @@ SOURCE_URL = {
     'site': 'http://kshow123.net',
     'api': 'http://api.kshow123.net/ajax/proxy.php',
     'list': 'http://kshow123.net/show/',
+    'popular': 'http://kshow123.net/show/popular/',
+    'latest': 'http://kshow123.net/show/latest/',
+    'rated': 'http://kshow123.net/show/rated/',
+    'search': 'http://kshow123.net/search/',
 }
 
 PRIVATE_KEY = 'kshow123.net' + '4590481877' # + '8080'
@@ -49,17 +53,23 @@ LOG_LEVEL = 4
 printable = set(string.printable)
 
 class Logger:
-    def __init__(self, level=1):
-        self.level = level
+    def __init__(self, logger=None):
+        self.logger = logger
 
     def log(self, level, txt):
         """Logs to the logger"""
-        if level <= self.level:
-            line = strftime("%Y-%m-%d %H:%M:%S", gmtime()) + ' (' + str(level) + ') ' + txt
-            print line
+        if level <= LOG_LEVEL:
+            if self.logger is not None:
+                self.logger.log(txt)
+            else:
+                line = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()) + ' (' + str(level) + ') ' + txt
+                print line
 
     def warn(self, message):
-        self.log(1, message)
+        if self.logger is not None:
+            self.logger.warn(message)
+        else:
+            self.log(1, message)
 
 class StructureException(Exception):
     def __init__(self, page_url='', hint=''):
@@ -67,7 +77,7 @@ class StructureException(Exception):
         self.message = 'Seems like the page structure changed'
         self.url = page_url
         self.hint = hint
-    
+
     def __str__(self):
         return self.message + '. ' + self.hint + ' (' + self.url + ')'
     def __repr__(self):
@@ -75,12 +85,14 @@ class StructureException(Exception):
 
 ###################################################################################################
 
-Show = namedtuple('Show', 'name url')
-Episode = namedtuple('Episode', 'name number url has_sub cover release')
-Video = namedtuple('Video', 'id url subUrl')
-File = namedtuple('File', 'file label type default kind cover')
+Show = namedtuple('Show', 'show_name episodes_url has_sub cover')
+Episode = namedtuple('Episode', 'show_name episode_name episode_number episode_url has_sub cover release')
+Server = namedtuple('Server', 'show_name episode_name episode_number server_name video_id video_name file_url sub_url cover')
+File = namedtuple('File', 'show_name episode_name episode_number server_name video_id video_name file_url label type default kind cover')
 
 ###################################################################################################
+
+Source = namedtuple('Source', 'name video_id video_name')
 
 def decrypt(data, salt):
     password = private_key = PRIVATE_KEY + salt
@@ -88,10 +100,7 @@ def decrypt(data, salt):
 
 class Lib:
     def __init__(self, logger):
-        if logger is not None:
-            self.logger = logger
-        else:
-            self.logger = Logger(LOG_LEVEL)
+        self.logger = Logger(logger)
 
     def get_soup(self, url):
         data = self.make_request(url)
@@ -131,6 +140,61 @@ class Lib:
         self.logger.log(5, 'RESPONSE: ' + page)
         return page
 
+    def _get_x_shows(self, url, page=1):
+        """Retrieve the list of popular shows"""
+        result = []
+        soup = self.get_soup(url)
+        container = soup.find(id='featured')
+
+        if container is None:
+            raise StructureException(SOURCE_URL['list'], 'id=featured not found')
+
+        for row in container.find_all('div', class_='row'):
+            for col in row.find_all('div'):
+                if col is None:
+                    continue
+
+                img = col.find('img')
+                a = col.find('h2').find('a')
+                sub = col.find('span', class_='info-overlay-sub')
+
+                show_name = a.get_text()
+                episode_number = '??'
+                episode_name = show_name
+                name_m = re.search(
+                    r'([\s\S]*)episode\s*([\s\S]*)',
+                    a.get_text(),
+                    re.IGNORECASE
+                )
+                if name_m is not None:
+                    show_name = name_m.group(1)
+                    episode_number = name_m.group(2)
+                    episode_name = 'Episode ' + episode_number
+
+                episode = Episode(
+                    show_name=show_name,
+                    episode_name=episode_name,
+                    episode_number=episode_number,
+                    episode_url=a.get('href'),
+                    cover=img.get('src'),
+                    has_sub=sub is not None,
+                    release='??',
+                )
+                result.append(episode)
+        return result
+
+    def get_popular_shows(self, page=1):
+        return self._get_x_shows(url=SOURCE_URL['popular'] + str(page), page=page)
+
+    def get_latest_shows(self, page=1):
+        return self._get_x_shows(url=SOURCE_URL['latest'] + str(page), page=page)
+
+    def get_rated_shows(self, page=1):
+        return self._get_x_shows(url=SOURCE_URL['rated'] + str(page), page=page)
+
+    def search_shows(self, query, page=1):
+        return self._get_x_shows(url=SOURCE_URL['search'] + query + '/' + str(page), page=page)
+
     def get_shows(self):
         """Retrieve the list of shows"""
         result = []
@@ -143,8 +207,10 @@ class Lib:
         for li in container.find_all('li'):
             for a in li.find_all('a'):
                 show = Show(
-                    name=a.get_text(), 
-                    url=a.get('href'),
+                    show_name=a.get_text(),
+                    episodes_url=a.get('href'),
+                    cover=None,
+                    has_sub=False,
                 )
                 result.append(show)
         return result
@@ -152,7 +218,7 @@ class Lib:
     def get_episodes(self, show):
         """Retrieve the list of episodes for a show"""
         result = []
-        soup = self.get_soup(show.url)
+        soup = self.get_soup(show.episodes_url)
         container = soup.find(id='list-episodes')
 
         if container is None:
@@ -164,7 +230,7 @@ class Lib:
             cover_img = cover_container.find('img')
         if cover_img is not None:
             cover = cover_img.get('src').strip()
-        
+
         table = soup.find('table')
         if table is None:
             raise StructureException(show.url, 'table in id=list-episode not found')
@@ -173,7 +239,7 @@ class Lib:
             h2 = tr.find('h2')
             if h2 is None:
                 continue
-            
+
             release = None
             release_td = tr.find('td', class_='text-right')
             if release_td is not None:
@@ -192,23 +258,52 @@ class Lib:
             if number_m is not None:
                 number = number_m.group(1)
 
-            episode = Episode(name=name,
-                            number=number,
-                            cover=cover, 
-                            url=a.get('href'), 
-                            has_sub=(sub != None),
-                            release=release,
+            episode = Episode(
+                show_name=show.show_name,
+                episode_name=name,
+                episode_number=number,
+                cover=cover,
+                episode_url=a.get('href'),
+                has_sub=(sub != None),
+                release=release,
             )
             result.append(episode)
         return result
 
-    def get_video(self, episode):
-        """Retrieve the video url for an episode"""
-        soup = self.get_soup(episode.url)
+    def get_episode(self, episode):
+        """Retrieve the sources of videos"""
+
+        soup = self.get_soup(episode.episode_url)
         container = soup.find(id='content')
 
         if container is None:
             raise StructureException(episode.url, 'id=content not found')
+
+        # source name
+        source_lookup = {}
+        ul = soup.find(id='server_list')
+
+        if ul is not None:
+            for li in ul.find_all('li', class_='server_item'):
+                ul_video_list = li.find('ul', class_='video_list')
+                strong = li.find('strong').get_text()
+                name_m = re.search(
+                    r'([\s\S]*):',
+                    strong
+                )
+                name=strong
+                if name_m is not None:
+                    name=name_m.group(1)
+
+                if ul_video_list is None:
+                    raise StructureException(episode.url, 'Could not get the server list class=video_list')
+                for li_video in ul_video_list.find_all('li'):
+                    a = li_video.find('a')
+                    source_lookup[a.get('id')] = Source(
+                        name=name,
+                        video_id=a.get('id'),
+                        video_name=a.get_text()
+                    )
 
         # current videoid
         current_m = re.search(
@@ -239,29 +334,44 @@ class Lib:
             container.script.string
         )
 
-        videos = []
+        servers = []
 
         if videos_m is not None:
             for item in videos_m:
-                video = Video(
-                    item[0], 
-                    item[1].replace('\\/', '/'), 
-                    item[2].replace('\\/', '/'),
+                source = Source(
+                    '??',
+                    '??',
+                    '??',
                 )
-                videos.append(video)
 
-        video = next((v for v in videos if v.id == current_video_id), None)
+                if item[0] in source_lookup:
+                    source = source_lookup[item[0]]
 
-        if len(videos) == 0:
-            return []
+                server = Server(
+                    show_name=episode.show_name,
+                    episode_name=episode.episode_name,
+                    episode_number=episode.episode_number,
+                    server_name=source.name,
+                    video_id=item[0],
+                    video_name=source.video_name,
+                    file_url=item[1].replace('\\/', '/'),
+                    sub_url=item[2].replace('\\/', '/'),
+                    cover=episode.cover,
+                )
+                servers.append(server)
+
+        return servers
+
+    def get_video(self, server):
+        """Retrieve the video url for an episode"""
 
         headers = DEFAULT_HEADER.copy()
         headers['Content-Type'] = 'application/x-www-form-urlencoded'
         
-        data = urllib.urlencode({ 
-            'link': video.url,
-            'subUrl': video.subUrl,
-            'imageCover': cover,
+        data = urllib.urlencode({
+            'link': server.file_url,
+            'subUrl': server.sub_url,
+            'imageCover': server.cover,
         })
 
         # ajax call to get video URL
@@ -336,15 +446,21 @@ class Lib:
             if kind_m is not None:
                 kind = kind_m.group(1)
 
-            file = File(
-                file=file_path, 
+            video = File(
+                show_name=server.show_name,
+                episode_name=server.episode_name,
+                episode_number=server.episode_number,
+                server_name=server.server_name,
+                video_id=server.video_id,
+                video_name=server.video_name,
+                file_url=file_path,
                 label=label,
                 type=type_str,
                 default=default,
                 kind=kind,
-                cover=cover,
+                cover=server.cover,
             )
-            files.append(file)
+            files.append(video)
         
         return files
 

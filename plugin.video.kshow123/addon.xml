@@ -2,7 +2,7 @@
 <addon id="plugin.video.kshow123"
        version="1.1.2"
        name="KShow123"
-       provider-name="danlevan">
+       provider-name="blu38erry">
   <requires>
     <import addon="xbmc.python" version="2.6.9"/>
     <import addon="script.module.beautifulsoup4" version="4.3.1"/>

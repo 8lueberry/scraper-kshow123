@@ -108,9 +108,9 @@ def kodi_menu():
                                 listitem=li,
                                 isFolder=True)
 
-def kodi_list_x_shows(page, episode_list, category):
+def kodi_list_x_shows(page, episode_list, category, link_category='episode'):
     for episode in episode_list:
-        url = build_url({ 'category': 'episode', 'episode': serialize(episode) })
+        url = build_url({ 'category': link_category, 'episode': serialize(episode), 'show': serialize(episode) })
         li = xbmcgui.ListItem(get_episode_name(episode))
         li.setArt(get_episode_cover(episode))
         xbmcplugin.addDirectoryItem(handle=addon_handle,
@@ -143,7 +143,7 @@ def kodi_list_episodes(show):
     episode_list = kshow.get_episodes(show)
     for episode in episode_list:
         url = build_url({ 'category': 'episode', 'episode': serialize(episode) })
-        li = xbmcgui.ListItem(get_episode_name(episode), iconImage=cover)
+        li = xbmcgui.ListItem(get_episode_name(episode))
         li.setArt(get_episode_cover(episode))
         xbmcplugin.addDirectoryItem(handle=addon_handle,
                                     url=url,
@@ -155,7 +155,9 @@ def kodi_list_servers(episode):
     for server in server_list:
         url = build_url({ 'category': 'file', 'server': serialize(server) })
         name = get_episode_name(episode)
-        li = xbmcgui.ListItem(server.server_name + ' (' + server.video_name + ') - ' + name)
+        if server.server_name is not None:
+            name = server.server_name + ' (' + server.video_name + ') - ' + name
+        li = xbmcgui.ListItem(name)
         li.setArt(get_episode_cover(episode))
         xbmcplugin.addDirectoryItem(handle=addon_handle,
                                     url=url,
@@ -250,7 +252,7 @@ elif arg_category == 'search':
     arg_page = args.get('page', ['1'])[0]
     arg_page_int = int(arg_page)
     episode_list = kshow.search_shows(arg_query, arg_page_int)
-    kodi_list_x_shows(arg_page_int, episode_list, arg_category)
+    kodi_list_x_shows(arg_page_int, episode_list, arg_category, 'episodes')
 elif arg_category == 'all':
     kodi_list_all_shows()
 

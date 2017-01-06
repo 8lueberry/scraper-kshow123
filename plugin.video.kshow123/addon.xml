@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <addon id="plugin.video.kshow123"
-       version="1.1.2"
+       version="1.1.3"
        name="KShow123"
        provider-name="blu38erry">
   <requires>
